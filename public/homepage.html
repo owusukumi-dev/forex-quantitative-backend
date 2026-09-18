@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secure Market Sentinel</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+  <div class="left-flank">SECURE MARKET SENTINEL v2.0</div>
+  <div class="right-flank">
+    <span>API: <span class="api-status">ONLINE</span></span>
+    <span>Vault: <span class="vault-status">SECURE</span>]</span>
+    <span>Time: <span class="time">--:--</span></span>
+  </div>
+</header>
+
+    <main>
+      
+       <aside class="left-body">
+        <div class="nav-item">Dashboard</div>
+        <div class="nav-item">Secure Vault</div>
+        <div class="nav-item">Historical Data</div>
+        <div class="nav-item">Settings</div> 
+       </aside>
+
+
+       <section class="feed">
+        <div class="heading">SENTINEL ENGINE (HIGH IMPACT NEWS)</div>
+        <div class="news-container">
+         <div class="news-labels">
+            <span>Time</span>
+            <span>Currency</span>
+            <span>Event</span>
+            <span>Previous</span>
+            <span>Forecast</span>
+         </div>
+         <div class="news-row">
+          <span>10:00</span>
+          <span>USD</span>
+          <span>CPI Data</span>
+          <span>3.1%</span>
+          <span>3.2%</span>
+         </div>
+         <div class="news-row">
+            <span>14:00</span>
+            <span>EUR</span>
+            <span>Interest Rate</span>
+            <span>4.0%</span>
+            <span>4.25%</span>
+        </div>
+        </div>
+       </section>
+
+      
+       <section class="calculator">
+        <div class="heading">RISK CALCULATOR</div>
+        <div class="risk-inputs">
+            <label>Balance</label>
+            <input type="text">
+
+            <label>Risk %</label>
+            <input type="text">
+
+             <label>Entry</label>
+            <input type="text">
+
+             <label>Stop Loss</label>
+            <input type="text">
+        </div>
+        <button class="calc-btn">CALCULATE LOT SIZE</button>
+       </section>
+
+       
+       <section class="notes">
+        <div class="heading">NEWS DATA</div>
+        <textarea class="news-data"></textarea>
+        <button class="save-btn">Save Data</button>
+       </section>
+    </main>
+    <script>
+    const API_URL = 'http://localhost:5000/api/signal/info/data';
+
+    async function loadSentinelData() {
+        try {
+            const response = await fetch(API_URL);
+            const result = await response.json();
+
+            if (result.status === "success") {
+                renderNews(result.data);
+               
+                document.querySelector('.news-data').value = JSON.stringify(result.data[0].description, null, 2);
+            }
+        } catch (error) {
+            console.error("Sentinel Offline:", error);
+            document.querySelector('.api-status').innerText = "OFFLINE";
+            document.querySelector('.api-status').style.color = "#ff4b2b";
+        }
+    }
+
+    function renderNews(events) {
+        const container = document.querySelector('.news-container');
+        
+        const labels = document.querySelector('.news-labels').outerHTML;
+        container.innerHTML = labels;
+
+        events.forEach(event => {
+            const row = document.createElement('div');
+            row.className = 'news-row';
+            
+            const eventTime = new Date(event.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+
+            row.innerHTML = `
+                <span>${eventTime}</span>
+                <span class="currency">${event.currency}</span>
+                <span class="event-name">${event.event}</span>
+                <span>${event.previous}</span>
+                <span>${event.forecast}</span>
+            `;
+            container.appendChild(row);
+        });
+    }
+
+    loadSentinelData();
+
+    setInterval(loadSentinelData, 300000);
+document.querySelector('.calc-btn').addEventListener('click', () => {
+    const inputs = document.querySelectorAll('.risk-inputs input');
+    const balance = parseFloat(inputs[0].value);
+    const riskPercent = parseFloat(inputs[1].value) / 100;
+    const entry = parseFloat(inputs[2].value);
+    const stopLoss = parseFloat(inputs[3].value);
+
+    if (balance && riskPercent && entry && stopLoss) {
+  
+        const denominator = Math.abs(entry - stopLoss);
+        const lotSize = (balance * riskPercent) / denominator;
+        
+        alert(`Calculated Position Size: ${lotSize.toFixed(2)} Lots`);
+    } else {
+        alert("Please fill all fields for calculation.");
+    }
+});
+ function time(){
+    const now=new Date();
+    document.querySelector('.time').textContent=now.toLocaleTimeString();  
+ }
+     setInterval(time,1000);
+     time();
+</script>
+</body>
+</html>
