@@ -1,9 +1,9 @@
 import pandas as pd
 import numpy as np
 
+
 def calculate_rsi(data: pd.Series, period: int = 14, wilder: bool = True) -> pd.Series:
     delta = data.diff()
-
     up = delta.clip(lower=0.0)
     down = -delta.clip(upper=0.0)
 
@@ -15,20 +15,20 @@ def calculate_rsi(data: pd.Series, period: int = 14, wilder: bool = True) -> pd.
         avg_loss = down.rolling(window=period).mean()
 
     rs = avg_gain / avg_loss.replace(0.0, np.nan)
-    
     rsi = 100.0 - (100.0 / (1.0 + rs))
     rsi = rsi.where(avg_loss != 0.0, 100.0)
     rsi = rsi.where((avg_gain != 0.0) | (avg_loss != 0.0), 50.0)
-
     return rsi
 
-def generate_mock_forex_data(periods=500):
-    """Generates synthetic 15-minute EUR/USD OHLCV data for test execution."""
+
+def generate_mock_forex_data(periods=5000):
+    """Generates synthetic 15-minute EUR/USD OHLCV data."""
     rng = pd.date_range(end=pd.Timestamp.now(), periods=periods, freq='15min')
     np.random.seed(42)
-    returns = np.random.normal(0.00005, 0.001, periods)
+   
+    returns = np.random.normal(0.00001, 0.001, periods)
     price_series = 1.0800 * np.cumprod(1 + returns)
-    
+
     return pd.DataFrame({
         'open': price_series * (1 - np.random.uniform(0, 0.0005, periods)),
         'high': price_series * (1 + np.random.uniform(0, 0.001, periods)),
@@ -36,6 +36,7 @@ def generate_mock_forex_data(periods=500):
         'close': price_series,
         'volume': np.random.randint(100, 5000, periods)
     }, index=rng)
+
 
 def run_backtest(csv_path="NewForexData.csv"):
     try:
@@ -50,20 +51,23 @@ def run_backtest(csv_path="NewForexData.csv"):
             'volume': df['volume'].resample('15min').sum()
         }).dropna()
     except FileNotFoundError:
-        print(f"[Notice] '{csv_path}' not found. Generating synthetic 15-minute market sample for demo execution...")
-        strat_df = generate_mock_forex_data()
+        print(f"[Notice] '{csv_path}' not found. Generating 5000-period market sample for execution...")
+        strat_df = generate_mock_forex_data(5000)
 
     strat_df['SMA20'] = strat_df['close'].rolling(window=20).mean()
     strat_df['SMA5'] = strat_df['close'].rolling(window=5).mean()
     strat_df['RSI'] = calculate_rsi(strat_df['close'], period=14)
 
+    
     strat_df['Signal'] = 'HOLD'
-    strat_df.loc[(strat_df['SMA5'] > strat_df['SMA20']) & (strat_df['RSI'] < 30), 'Signal'] = 'BUY'
-    strat_df.loc[(strat_df['SMA5'] < strat_df['SMA20']) & (strat_df['RSI'] > 70), 'Signal'] = 'SELL'
+   
+    strat_df.loc[(strat_df['SMA5'] > strat_df['SMA20']) & (strat_df['RSI'] < 40), 'Signal'] = 'BUY'
+    
+    strat_df.loc[strat_df['RSI'] > 70, 'Signal'] = 'SELL'
 
     position_size = 0.1
     spread_pips = 1.0
-    pip_value = 10.0
+    pip_value = 10.0 * position_size  
     spread_cost = spread_pips * pip_value
     in_position = False
     entry_price = 0.0
@@ -97,6 +101,18 @@ def run_backtest(csv_path="NewForexData.csv"):
                 'net_equity': equity
             })
 
+    
+    if in_position:
+        exit_price = strat_df['close'].iloc[-1] - (spread_pips / 10000.0)
+        profit = (exit_price - entry_price) * 10000.0 * pip_value - spread_cost
+        equity += profit
+        trades[-1].update({
+            'exit_time': strat_df.index[-1],
+            'exit_price': exit_price,
+            'profit': profit,
+            'net_equity': equity
+        })
+
     completed = [t for t in trades if 'profit' in t]
     if completed:
         wins = [t for t in completed if t['profit'] > 0]
@@ -105,6 +121,7 @@ def run_backtest(csv_path="NewForexData.csv"):
         print(f"Backtest Completed: {len(completed)} trades | Win Rate: {win_rate:.2f}% | Total PnL: ${total_pnl:.2f}")
     else:
         print("Backtest executed: No completed round-trip trades generated.")
+
 
 if __name__ == '__main__':
     run_backtest()
