@@ -1,17 +1,20 @@
-import httpx
+from curl_cffi import requests
 import json
+import logging
 from datetime import datetime, timedelta, timezone
+
+logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+
 
 def fetch_sentinel_data():
     url = "https://endpoints.investing.com/pd-instruments/v1/calendars/economic/events/occurrences"
 
+
     headers = {
-        'accept': '*/*',
+        'accept': 'application/json, text/plain, */*',
         'accept-language': 'en-US,en;q=0.9',
-        'dnt': '1',
         'origin': 'https://www.investing.com',
         'referer': 'https://www.investing.com/',
-        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
     }
 
     now = datetime.now(timezone.utc)
@@ -26,15 +29,26 @@ def fetch_sentinel_data():
         'country_ids': '25,32,6,37,72,22,17,39,14,10,35,43,36,110,11,26,12,4,5,56'
     }
 
-    with httpx.Client(timeout=15.0) as client:
-        response = client.get(url, headers=headers, params=params)
+    try:
+
+        response = requests.get(url, headers=headers, params=params, impersonate="chrome", timeout=15)
+
         if response.status_code == 200:
             return response.json()
-        else:
+        elif response.status_code in [403, 401]:
+            logging.error(f"Access Denied ({response.status_code}). WAF/Cloudflare blocked the request.")
             return None
+        else:
+            logging.warning(f"Unexpected status code: {response.status_code}")
+            return None
+
+    except Exception as e:
+        logging.error(f"Network request failed: {e}")
+        return None
 
 
 def process_sentinel_data(raw_data):
+
     if not raw_data:
         return []
 
@@ -50,7 +64,11 @@ def process_sentinel_data(raw_data):
 
     high_impact_alerts = []
 
-    for occ in raw_data.get('occurrences', []):
+    occurrences = raw_data.get('occurrences', [])
+    if not occurrences and 'data' in raw_data:
+        occurrences = raw_data['data'].get('occurrences', [])
+
+    for occ in occurrences:
         event_id = occ.get('event_id')
         details = event_blueprint.get(event_id)
 
@@ -72,6 +90,12 @@ def process_sentinel_data(raw_data):
 
 
 if __name__ == '__main__':
+    logging.info("Fetching market data via curl_cffi...")
     market_data = fetch_sentinel_data()
-    sentinel_alerts = process_sentinel_data(market_data)
-    print(json.dumps(sentinel_alerts))
+
+    if market_data:
+        sentinel_alerts = process_sentinel_data(market_data)
+        logging.info(f"Successfully processed {len(sentinel_alerts)} high-impact events.")
+        print(json.dumps(sentinel_alerts, indent=4))
+    else:
+        logging.error("Failed to retrieve market data. No alerts generated.")
