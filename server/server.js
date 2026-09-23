@@ -13,14 +13,19 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, '..', 'public', 'homepage.html'));
 });
+
 let alerts = [];
+
+require('dotenv').config(); 
 
 function fetchSentinelAlerts() {
     return new Promise((resolve, reject) => {
         const scriptPath = path.join(__dirname, '..', 'python backend', 'main.py');
-        const pythonCommand = process.platform === 'win32' ? 'python' : 'python3';
+        
+        
+        const pythonCommand = process.env.PYTHON_BIN || (process.platform === 'win32' ? 'python' : 'python3');
 
-        const pyProcess = spawn(pythonCommand, [scriptPath]);
+        const pyProcess = spawn(pythonCommand, ['-u', scriptPath]);
 
         let stdoutData = '';
         let stderrData = '';
@@ -37,12 +42,25 @@ function fetchSentinelAlerts() {
             if (code !== 0) {
                 return reject(new Error(`Python script exited with code ${code}: ${stderrData}`));
             }
+
             try {
-                const parsed = JSON.parse(stdoutData.trim());
-                resolve(parsed);
+                const jsonStart = stdoutData.indexOf('[');
+                const jsonEnd = stdoutData.lastIndexOf(']');
+
+                if (jsonStart === -1 || jsonEnd === -1) {
+                    if (stdoutData.includes('[]')) return resolve([]);
+                    return reject(new Error(`No valid JSON found in stdout | Logs: ${stderrData}`));
+                }
+
+                const cleanedJson = stdoutData.substring(jsonStart, jsonEnd + 1);
+                resolve(JSON.parse(cleanedJson));
             } catch (err) {
-                reject(new Error(`JSON Parse Error: ${err.message} | Raw: ${stdoutData}`));
+                reject(new Error(`JSON Parse Error: ${err.message}`));
             }
+        });
+
+        pyProcess.on('error', (err) => {
+            reject(new Error(`Failed to start subprocess: ${err.message}`));
         });
     });
 }
@@ -72,4 +90,4 @@ app.listen(port, () => {
 });
 
 
-setInterval(updateAlerts, 1000 * 60 * 5);
+setInterval(updateAlerts, 1000 * 60 * 10);
